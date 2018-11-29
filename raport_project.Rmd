@@ -1,0 +1,18 @@
+`r project_create_date <- Sys.Date()`
+---
+title: "Projekt PDB"
+author: "Michał Jabłoński"
+date: `r project_create_date`
+output:
+  html_document: 
+    fig_caption: yes
+    number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_float: true
+  word_document: default
+---
+
+# Wymagania
+Wymagania projektowe dostępne pod [adresem](http://www.cs.put.poznan.pl/dbrzezinski/teaching/zedZaoczne/zed_projekt_2018-2019_analiza.html).
+
