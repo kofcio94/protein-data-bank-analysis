@@ -1,8 +1,6 @@
-`r project_create_date <- Sys.Date()`
 ---
 title: "Projekt PDB"
 author: "Michał Jabłoński"
-date: `r project_create_date`
 output:
   html_document: 
     fig_caption: yes
@@ -13,6 +11,123 @@ output:
   word_document: default
 ---
 
+date: `r Sys.Date()`
+
 # Wymagania
+
 Wymagania projektowe dostępne pod [adresem](http://www.cs.put.poznan.pl/dbrzezinski/teaching/zedZaoczne/zed_projekt_2018-2019_analiza.html).
 
+Zestaw danych dostępny pod [adresem](https://zenodo.org/record/1040778/files/all_summary.7z)
+
+# Wnioski i spostrzeżenia z analizy danych
+
+Podczas tworzenia analizy Protein Data Bank, największą trudnością było zrozumienie idei i celu przeprowadzenia analizy. Z punktu widzenia technicznego okazało się, że w systemie mac os wszystkie dane nie są ładowane bezpośrednio do pamięci operacyjnej, tylko do SWAP (której wielkość jest dynamiczna), co w prost nie ograniczało ilość danych możliwych do wczytania. Mimo braku ograniczenia pamięci operacyjnej, problemem okazał się limit długości wczytywanego wektora, który wynosi 500000. Gdy tą wartość przekroczyliśmy, otrzymywaliśmy błąd: 
+![Błąd wektora dłuższego niż 500000](https://i.imgur.com/3Ll2Xuk.png)
+Błąd ten uniemożliwił wczytanie całego pilku CSV, dla tego analiza danych została przeprowadzona tylko na części pliku Protein Data Bank. Co ciekawe w trakcie tworzenia projektu zainstalowałem paczkę [XQuartz](https://www.xquartz.org) (która pośrednio była mi potrzebna do innych rzeczy) - spowodowała ona znaczne przyśpieszenie analizy z użyciem R/Knit. Niestety tak jak na początku wspomniałem największą trudnością było zrozumienie idei i celu analizy, co w połączeniu z ograniczeniem czasowym spowodowanym prowadzeniem firmy i paroma wyjazdami służbowymi do kontrahentów, nie udało mi się skończyć całej analizy. Mimo wszystko uważam, że czas poświęcony na ten projekt nie był czasem zmarnowanym.
+
+# Użyte biblioteki i paczki do stworzenia analizy
+
+```{r message=FALSE, cache=TRUE}
+library(DT)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(plotly)
+```
+
+```{r}
+(.packages())
+```
+
+```{r echo=FALSE, message=FALSE, cache=TRUE}
+prettyTable <- function(table_df, round_columns=numeric(), round_digits=2) {
+    DT::datatable(table_df, style="bootstrap", filter = "top", rownames = FALSE, extensions = "Buttons", options = list(dom = 'Bfrtip', buttons = c('copy', 'csv', 'excel', 'pdf', 'print'))) %>%
+    formatRound(round_columns, round_digits)
+}
+```
+
+# Wczytanie danych
+
+Testowy zbiór danych
+
+```{r cache=TRUE}
+rowsInCSV <- 500000
+initial <- read.csv(file = "all_summary.csv", nrows = rowsInCSV, sep = ';', header = TRUE)
+```
+
+# Przefiltrowanie i oczyszczenie danych
+
+```{r}
+data_step1 <- initial %>% 
+  filter(res_name != "UNK" ,res_name != "UNX" ,res_name != "UNL" ,res_name != "DUM" ,res_name != "N" ,res_name != "BLOB" ,res_name != "ALA" ,res_name != "ARG" ,res_name != "ASN" ,res_name != "ASP" ,res_name != "CYS" ,res_name != "GLN" ,res_name != "GLU" ,res_name != "GLY" ,res_name != "HIS" ,res_name != "ILE" ,res_name != "LEU" ,res_name != "LYS" ,res_name != "MET" ,res_name != "MSE" ,res_name != "PHE" ,res_name != "PRO" ,res_name != "SEC" ,res_name != "SER" ,res_name != "THR" ,res_name != "TRP" ,res_name != "TYR" ,res_name != "VAL" ,res_name != "DA" ,res_name != "DG" ,res_name != "DT" ,res_name != "DC" ,res_name != "DU" ,res_name != "A" ,res_name != "G" ,res_name != "T" ,res_name != "C" ,res_name != "U" ,res_name != "HOH" ,res_name != "H20" ,res_name != "WAT")
+
+data_step2 <- data_step1
+data_step2[is.na(data_step1)] <- 0
+```
+
+# Ograniczenie zbioru danych do 50 najczęściej występujących "res_name"
+
+```{r warning=FALSE}
+fifty_res_names <- head(data_step2 %>% select(res_name) %>% mutate(amount = 0) %>% group_by(res_name) %>% summarise(amount=sum(table(res_name))) %>% arrange(-amount) %>% select(res_name), 50)
+
+fifty_res_names <- unname(unlist(fifty_res_names))
+data_step3 <- data_step2 %>% filter(res_name == fifty_res_names)
+```
+
+# Przykładowa koralacja zmiennych
+```{r}
+ggplot(data_step3, aes(chain_id, blob_volume_coverage)) + geom_point()
+```
+
+# Ile przykładów ma każda klasa res_name?
+```{r}
+prettyTable(data_step3 %>% select(res_name) %>% mutate(amount = 0) %>% group_by(res_name) %>% summarise(amount=sum(table(res_name))) %>% arrange(-amount))
+```
+
+# Wykresy rozkładów liczby atomów
+```{r}
+ggplot(data_step3, aes(local_res_atom_non_h_count,local_res_atom_non_h_electron_sum)) + geom_point()
+``` 
+
+
+# Tablea pokazująca 10 klas z największą niezgodnością liczby atomów
+```{r}
+most_diff_atoms <- head(data_step3 %>% 
+                          mutate(difference = abs(local_res_atom_non_h_count - dict_atom_non_h_count)) %>% 
+                          select(res_name, local_res_atom_non_h_count, dict_atom_non_h_count, difference) %>% 
+                          group_by(res_name) %>% 
+                          summarise(difference=sum(difference)) %>% 
+                          arrange(-difference), 10)
+
+prettyTable(most_diff_atoms)
+
+```
+
+# Tablea pokazująca 10 klas z najmniejszą niezgodnością liczby atomów
+```{r}
+less_diff_atoms <- head(data_step3 %>% 
+                          mutate(difference = abs(local_res_atom_non_h_electron_sum - dict_atom_non_h_electron_sum)) %>%
+                          select(res_name, local_res_atom_non_h_electron_sum, dict_atom_non_h_electron_sum, difference) %>% 
+                          group_by(res_name) %>% 
+                          summarise(difference=sum(difference)) %>% 
+                          arrange(difference), 10)
+
+prettyTable(less_diff_atoms)
+```
+
+```{r}
+#dalej niestety ne udało się skończyć - brak czasu
+#data_part <- data_step3 %>% select(starts_with('part_01')) 
+#data_part
+
+
+
+#data_part <- melt(data_part ,  id.vars = 'part_01_shape_segments_count', variable.name = 'series')
+#data_part
+# plot on same grid, each series colored differently -- 
+# good if the series have same scale
+#ggplot(data_part, aes(part_01_shape_segments_count,value)) + geom_line(aes(colour = series))
+
+# or plot on different plots
+#ggplot(data_part, aes(part_01_shape_segments_count,value)) + geom_line() + facet_grid(series ~ .)
+```
